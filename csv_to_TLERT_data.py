@@ -10,7 +10,7 @@ df = df[df['SurveyDate'] > '2024-11-12 12:00:00']
 df = df[df['SurveyDate'] < '2024-11-18 12:00:00']
 df = df[df['I(mA)'] > 10]
 df = df[~df[['B', 'A', 'M', 'N']].isin([18]).any(axis=1)]
-df = df[~df[['B', 'A', 'M', 'N']].isin([58]).any(axis=1)]
+df = df[~df[['B', 'A', 'M', 'N']].isin([37]).any(axis=1)]
 df = df[~df[['B', 'A', 'M', 'N']].isin([58]).any(axis=1)]
 
 # Raining Even
