@@ -113,7 +113,7 @@ def perform_inversion(inversion_type, data_file, mesh_file, filename, **kwargs):
         inv.saveResults(basename=f"{filename}_Data_{inversion_type}")
         figs = plot_models(inv.models, mesh, inv.times, percentiles=(2, 95))
         saveFiguresToPDF(figs, f"{filename}_models_{inversion_type}.pdf", front_page)
-        figs_ratios = plot_model_ratios(inv.models, mesh, inv.times, ref_survey=28, cM=0.15, percentiles=(2, 97))
+        figs_ratios = plot_model_ratios(inv.models, mesh, inv.times, ref_survey=2, cM=0.05, percentiles=(2, 97))
         saveFiguresToPDF(figs_ratios, f"{filename}_ratios_{inversion_type}.pdf", front_page)
 
 grid = 'C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/ERT_Data/Grids/01_grid_sq_0.15sp2.0.bms'
@@ -121,10 +121,10 @@ grid = 'C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/ERT_Data/Grids/01_grid_
 folder = "C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/ERT_Data/"
 #file = folder + "REDOUX_02-15_10h_03-01_04h.shm"
 #file = folder + "RE_11-21_00h_11-25_22h.shm"
-file = folder + "TLERT_Data/" + "FLOOD_sans_18_37_58.shm"
+file = folder + "TLERT_Data/" + "HRE_sans_18_37_58.shm"
 #file = folder + "HIV_01-19_13h_03-01_04h.shm"
 
-filename = folder + "Results/" + file.split("/")[-1].split(".")[0]+ 'V3'
+filename = folder + "Results/" + file.split("/")[-1].split(".")[0]+ "sans_18_37_58"
 
 # Survey range processd "list(range(1, 3))" = [1, 2]
 #t = list(range(1, 106,5))
