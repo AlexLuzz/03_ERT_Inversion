@@ -61,8 +61,8 @@ def perform_inversion(inversion_type, data_file, mesh_file, filename, **kwargs):
         inv.generateTimelinePDF(filename=f"{filename}_timeline_{inversion_type}.pdf")
     elif inversion_type == 'TL':
         inv = ert.TimelapseERT(data_file, mesh=mesh)
-        inv.fullInversion(**inversion_params)
-        inv.generateTimelinePDF(filename=f"{filename}_timeline_{inversion_type}.pdf")
+        inv.fullInversion(**inversion_params, ti=t)
+        #inv.generateTimelinePDF(filename=f"{filename}_timeline_{inversion_type}.pdf")
     elif inversion_type == 'IP':
         models_rhoa = []
         models_IP = []
@@ -113,7 +113,7 @@ def perform_inversion(inversion_type, data_file, mesh_file, filename, **kwargs):
         inv.saveResults(basename=f"{filename}_Data_{inversion_type}")
         figs = plot_models(inv.models, mesh, inv.times)
         saveFiguresToPDF(figs, f"{filename}_models_{inversion_type}.pdf", front_page)
-        figs_ratios = plot_model_ratios(inv.models, mesh, inv.times, ref_survey=2)
+        figs_ratios = plot_model_ratios(inv.models, mesh, inv.times, ref_survey=26, cM=0.14)
         saveFiguresToPDF(figs_ratios, f"{filename}_ratios_{inversion_type}.pdf", front_page)
 
 grid = 'C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/03_ERT_Inversion/grids/01_grid_sq_0.15sp2.0.bms'
@@ -121,10 +121,10 @@ grid = 'C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/03_ERT_Inversion/grids/
 folder = "C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/03_ERT_Inversion/data/"
 #file = folder + "REDOUX_02-15_10h_03-01_04h.shm"
 #file = folder + "RE_11-21_00h_11-25_22h.shm"
-file = folder + "HRE_min10mA.shm"
+file = folder + "FLOOD_sans_A_58.shm"
 #file = folder + "HIV_01-19_13h_03-01_04h.shm"
 
-filename = folder + file.split("/")[-1].split(".")[0]+'cmax0.14'
+filename = folder + file.split("/")[-1].split(".")[0]+ 'V3'
 
 # Survey range processd "list(range(1, 3))" = [1, 2]
 #t = list(range(1, 106,5))

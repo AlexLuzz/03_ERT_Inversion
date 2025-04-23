@@ -124,7 +124,7 @@ def plot_models(models, grid, survey_dates=None, cMap='Spectral_r', percentiles=
 
     return figs
 
-def plot_model_ratios(models, grid, survey_dates, ref_survey=0, cMap='coolwarm', percentiles=(3, 97)):
+def plot_model_ratios(models, grid, survey_dates, ref_survey=0, cMap='coolwarm', percentiles=(3, 97), cM=None):
     """
     Plot the ratio of all time-lapse models relative to a reference survey.
 
@@ -147,7 +147,9 @@ def plot_model_ratios(models, grid, survey_dates, ref_survey=0, cMap='coolwarm',
     # Compute ratio
     ratio_models = [np.array(model) / ref_tl_model - 1 for model in models]
     cMin, cMax = get_cmin_cmax(ratio_models, percentiles=percentiles)
-    cM = max(abs(cMin), abs(cMax))
+    if cM == None:  
+        cM = max(abs(cMin), abs(cMax))
+
     for i in range(len(models)):
         if i == ref_survey:
             continue  # Skip ratio with itself

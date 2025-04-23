@@ -9,6 +9,7 @@ df = pd.read_csv('C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/fused_SAS4000
 df = df[df['SurveyDate'] > '2024-11-12 12:00:00']
 df = df[df['SurveyDate'] < '2024-11-18 12:00:00']
 df = df[df['I(mA)'] > 10]
+df = df[df['A'] != 58 ]
 
 # Raining Even
 #df = df[df['SurveyDate'] > '2024-11-21 00:00:00']
@@ -28,7 +29,7 @@ date_1 = survey_dates_datatime[0].strftime('%m-%d_%Hh')
 date_2 = survey_dates_datatime[-1].strftime('%m-%d_%Hh')
 
 #filename = f"{file}REDOUX_{date_1}_{date_2}"
-filename = f"{file}FLOOD"
+filename = f"{file}FLOOD_sans_A_58"
 inv = ert.TimelapseERT(DATA=DATA, times=survey_dates_datatime)
 inv.saveData(filename, masknan=True)
 
