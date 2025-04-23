@@ -116,15 +116,15 @@ def perform_inversion(inversion_type, data_file, mesh_file, filename, **kwargs):
         figs_ratios = plot_model_ratios(inv.models, mesh, inv.times, ref_survey=26, cM=0.14)
         saveFiguresToPDF(figs_ratios, f"{filename}_ratios_{inversion_type}.pdf", front_page)
 
-grid = 'C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/03_ERT_Inversion/grids/01_grid_sq_0.15sp2.0.bms'
+grid = 'C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/ERT_Data/Grids/01_grid_sq_0.15sp2.0.bms'
 
-folder = "C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/03_ERT_Inversion/data/"
+folder = "C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/ERT_Data/"
 #file = folder + "REDOUX_02-15_10h_03-01_04h.shm"
 #file = folder + "RE_11-21_00h_11-25_22h.shm"
-file = folder + "FLOOD_sans_A_58.shm"
+file = folder + "TLERT_Data/" + "FLOOD_sans_18_37_58.shm"
 #file = folder + "HIV_01-19_13h_03-01_04h.shm"
 
-filename = folder + file.split("/")[-1].split(".")[0]+ 'V3'
+filename = folder + "Results/" + file.split("/")[-1].split(".")[0]+ 'V3'
 
 # Survey range processd "list(range(1, 3))" = [1, 2]
 #t = list(range(1, 106,5))
