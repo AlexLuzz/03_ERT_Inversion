@@ -1,7 +1,6 @@
 import pygimli as pg
 from pygimli.physics import ert
-from tools import *
-import os
+from Tools.tools import *
 import numpy as np
 import matplotlib.pyplot as plt
 

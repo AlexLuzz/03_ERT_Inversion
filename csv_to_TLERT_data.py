@@ -1,7 +1,7 @@
 from datetime import datetime
 import pandas as pd
 from pygimli.physics import ert
-from tools import create_crosshole_data_df
+from Tools.tools import create_crosshole_data_df
 
 df = pd.read_csv('C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/ERT_Data/fused_SAS4000_OhmPi.csv', sep=';')
 
