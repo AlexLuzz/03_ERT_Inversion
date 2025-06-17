@@ -177,6 +177,47 @@ def plot_weather_and_sensor_periods(
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, axes
 
+def fetch_and_aggregate_weather(start_date, end_date, temp_step=2, precip_step=24):
+    """
+    Fetches hourly weather data and aggregates temperature and precipitation.
+
+    Parameters:
+        start_date (str or datetime): Start date.
+        end_date (str or datetime): End date.
+        temp_step (int): Step size for temperature aggregation.
+        precip_step (int): Step size for precipitation aggregation.
+
+    Returns:
+        dict: Aggregated times, temperatures, and precipitations.
+    """
+    # Convert start_date and end_date to datetime objects
+    start_date = pd.to_datetime(start_date)
+    end_date = pd.to_datetime(end_date)
+
+    stations = Stations()
+    station = stations.region('CA', 'QC')
+
+    # Fetch hourly weather data for the specified date range
+    data = Hourly('SOK6B', start_date, end_date)
+    data = data.fetch()
+
+    # Extract precipitation and temperature data
+    precipitation = data['prcp'].fillna(0)
+    temperature = data['temp']
+    times = data.index
+
+    # Aggregate data based on the specified steps
+    t_agg_temp = times[::temp_step]
+    temp_agg = [temperature.iloc[i] for i in range(0, len(temperature), temp_step)]
+    t_agg_precip = times[::precip_step]
+    precip_agg = [sum(precipitation[i:i + precip_step]) for i in range(0, len(precipitation), precip_step)]
+
+    # Create DataFrames
+    temp_df = pd.DataFrame({'date': t_agg_temp, 'temperature': temp_agg})
+    precip_df = pd.DataFrame({'date': t_agg_precip, 'precipitation': precip_agg})
+
+    return temp_df, precip_df
+
 def plot_weather(start_date, end_date, ax=None, temp_step=2, precip_step=24, plot_precip=False):
     """
     Fetches weather data from the YUL station in Montreal and plots temperature (and optionally precipitation).
@@ -193,28 +234,11 @@ def plot_weather(start_date, end_date, ax=None, temp_step=2, precip_step=24, plo
     - fig (Figure): The figure object containing the plots.
     - ax (Axes): The axes object for temperature (main y-axis, left).
     """
-    # Convert start_date and end_date to datetime objects
-    start_date = pd.to_datetime(start_date)
-    end_date = pd.to_datetime(end_date)
-
-    stations = Stations()
-    station = stations.region('CA', 'QC')
-
-    # Fetch daily weather data for the specified date range
-    data = Hourly('SOK6B', start_date, end_date)
-    data = data.fetch()
-
-    # Extract precipitation and temperature data
-    precipitation = data['prcp'].fillna(0)
-    temperature = data['temp']
-
-    times = data.index
-
-    # Aggregate data based on the specified steps
-    times_aggregated_temp = times[::temp_step]
-    times_aggregated_precip = times[::precip_step]
-    precipitation_aggregated = [sum(precipitation[i:i + precip_step]) for i in range(0, len(precipitation), precip_step)]
-    temperature_aggregated = [temperature.iloc[i] for i in range(0, len(temperature), temp_step)]
+    temp_df, precip_df = fetch_and_aggregate_weather(start_date, end_date, temp_step, precip_step)
+    
+    t_agg_temp, temp_agg = temp_df['date'], temp_df['temperature']
+    
+    t_agg_precip, precip_agg = precip_df['date'], precip_df['precipitation']
 
     # Create a new figure and axes if none are provided
     if ax is None:
@@ -223,12 +247,12 @@ def plot_weather(start_date, end_date, ax=None, temp_step=2, precip_step=24, plo
         fig = ax.get_figure()  # Get the figure from the provided axis
 
     # Plot temperature data with color change below 0°C (main y-axis, left)
-    temp_colors = ['deepskyblue' if temp < 0 else 'orange' for temp in temperature_aggregated]
-    ax.plot(times_aggregated_temp, temperature_aggregated, color='orange', linestyle='-', linewidth=2, label='Weather Temp (°C)')
-    for i in range(len(times_aggregated_temp) - 1):
+    temp_colors = ['deepskyblue' if temp < 0 else 'orange' for temp in temp_agg]
+    ax.plot(t_agg_temp, temp_agg, color='orange', linestyle='-', linewidth=2, label='Weather Temp (°C)')
+    for i in range(len(t_agg_temp) - 1):
         ax.plot(
-            times_aggregated_temp[i:i + 2],
-            temperature_aggregated[i:i + 2],
+            t_agg_temp[i:i + 2],
+            temp_agg[i:i + 2],
             color=temp_colors[i],
             linestyle='-',
             linewidth=2,
@@ -239,7 +263,7 @@ def plot_weather(start_date, end_date, ax=None, temp_step=2, precip_step=24, plo
     # Optionally plot precipitation on a secondary y-axis (right)
     if plot_precip:
         ax_precip = ax.twinx()
-        ax_precip.bar(times_aggregated_precip, precipitation_aggregated, width=0.3, alpha=0.8, color='royalblue', label='Precipitation (mm)')
+        ax_precip.bar(t_agg_precip, precip_agg, width=0.3, alpha=0.8, color='royalblue', label='Precipitation (mm)')
         ax_precip.set_ylabel('Precipitation (mm)', color='royalblue')
         ax_precip.tick_params(axis='y', labelcolor='royalblue')
 
@@ -260,58 +284,133 @@ def plot_weather(start_date, end_date, ax=None, temp_step=2, precip_step=24, plo
         
     ax.grid(which='major', color='grey', linestyle='-', linewidth=0.5, alpha=0.6)
 
-    return fig, ax
+    return fig, ax 
 
-def plot_weather_and_sensors(temp_data, plot_precip=False):
+def plot_weather_and_sensors(sensor_data, plot_precip=False):
     """
     Plots weather temperature (and optionally precipitation) and the 6 sensor temperature columns on the same time axis.
     All temperatures (weather and sensors) are plotted on the main y-axis (left).
     """
     # Set start and end date based on date column in temp_data
-    start_date = temp_data['date'].min()
-    end_date = temp_data['date'].max()
+    start_date = sensor_data['date'].min()
+    end_date = sensor_data['date'].max()
 
     # Plot weather data and get axes
     fig, ax = plot_weather(start_date, end_date, plot_precip=plot_precip)
 
     # Plot each sensor temperature column on the same axis as weather temperature
-    sensor_cols = [col for col in temp_data.columns if '-60cm' in col or '-90cm' in col]
+    sensor_cols = [col for col in sensor_data.columns if '-60cm' in col or '-90cm' in col]
     colors = ['red', 'green', 'blue', 'purple', 'brown', 'magenta']
     for i, col in enumerate(sorted(sensor_cols)):
-        ax.plot(temp_data['date'], temp_data[col], label=col, color=colors[i % len(colors)], linewidth=1.5)
+        ax.plot(sensor_data['date'], sensor_data[col], label=col, color=colors[i % len(colors)], linewidth=1.5)
 
     # Add legend for all temperature curves
     ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1), title="Temperature")
     fig.tight_layout()
-    plt.show()
+    return fig, ax
 
-def fit_chambers_heat_model(temp_data):
+def plot_modeled_and_sensor_periods(modeled_temp_data, sensor_data, period_list):
 
-    # Heat equation model from Chambers et al.
-    def temp_model(inputs, T_mean, delta_T, d, phase):
-        z, t = inputs
-        exponent = -z / d
-        sin_thingy = (2 * np.pi * t / 365 + phase - z / d)
-        return T_mean + (delta_T / 2) * np.exp(exponent) * np.sin(sin_thingy)
+    period_list = [(pd.to_datetime(start), pd.to_datetime(end)) for start, end in period_list]
+
+    n_periods = len(period_list)
+    fig, axes = plt.subplots(1, n_periods, figsize=(5 * n_periods, 5), sharey=True)
+
+    # For legend
+    handles_labels = []
+
+    # Sensor columns and colors
+    sensor_cols = [col for col in sensor_data.columns if '-60cm' in col or '-90cm' in col]
+    colors = ['red', 'green', 'blue', 'purple', 'brown', 'magenta']
+
+    for i, (p_start, p_end) in enumerate(period_list[0]):
+        ax = axes[i]
+        # Filter data for this period
+        mask = (sensor_data['date'] >= p_start) & (sensor_data['date'] <= p_end)
+        period_df = sensor_data.loc[mask]
+
+
+        l1, = ax.plot(sensor_data['date'], modeled_temp_data.loc[mask], color='orange', linestyle='-', linewidth=2, label='Weather Temp (°C)')
+
+        # Plot each sensor temperature column
+        sensor_lines = []
+        for j, col in enumerate(sorted(sensor_cols)):
+            l2, = ax.plot(
+                period_df['date'],
+                period_df[col],
+                label=col,
+                color=colors[j % len(colors)],
+                linewidth=1.5
+            )
+            sensor_lines.append(l2)
+
+        ax.set_ylabel('Temperature (°C)')
+        ax.axhline(0, color='black', linestyle='--', linewidth=1.5, alpha=0.8)
+        ax.set_title(f"Period {i+1}\n{p_start.date()} to {p_end.date()}")
+
+        # Format x-axis
+        locator = mdates.AutoDateLocator()
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=60, ha='right')
+        ax.grid(which='major', color='grey', linestyle='-', linewidth=0.5, alpha=0.6)
+
+        # Collect handles/labels for legend
+        if i == 0:
+            handles, labels = ax.get_legend_handles_labels()
+            handles_labels.extend(zip(handles, labels))
+
+    # Remove duplicate labels for legend
+    seen = set()
+    unique_handles_labels = []
+    for h, l in handles_labels:
+        if l not in seen:
+            unique_handles_labels.append((h, l))
+            seen.add(l)
+    handles, labels = zip(*unique_handles_labels)
+
+    # Place legend outside the plot
+    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=len(labels))
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    return fig, axes
+
+def fit_chambers_heat_model(sens_data):
+
+    temp_df, _ = fetch_and_aggregate_weather(sens_data['date'].min(), sens_data['date'].max(), 24)
 
     # T_mean is the mean yearly temperature, we take the last 365 days of the data to estimate it.
-    last_year = temp_data['Timestamp'].max() - pd.Timedelta(days=365)
-    temp_data_last_year = temp_data[temp_data['Timestamp'] >= last_year]
-    T_mean = temp_data_last_year[[col for col in temp_data_last_year.columns if '-60cm' in col or '-90cm' in col]].mean().mean()
-    # delta_T is the amplitude of the temperature variation,
+    last_year = temp_df['date'].max() - pd.Timedelta(days=365)
+    temp_data_last_year = temp_df[temp_df['date'] >= last_year]
+    T_mean = temp_data_last_year['temperature'].mean()
+    # delta_T is the amplitude of the temperature variation (max - min) over the last year
+    delta_T = temp_data_last_year['temperature'].max() - temp_data_last_year['temperature'].min()
 
-    depths = np.array([-0.6, -0.9, -0.6, -0.9, -0.6, -0.9])
-    days = np.array(pd.to_datetime(temp_data['Timestamp']))
-    temperatures = temp_data[[col for col in temp_data.columns if '-60cm' in col or '-90cm' in col]].values
-    temps = np.array(temperatures)
+    # Heat equation model from Chambers et al.
+    def temp_model(inputs, d, phase):
+        z, t = inputs
+        exponent = -z / d
+        sin_part = (2 * np.pi * t / 365) + phase - (z / d)
+        return T_mean + (delta_T / 2) * np.exp(exponent) * np.sin(sin_part)
+
+    # First sensor data for fitting, depth is -0.6m, it stays constant throughout the year.
+    # Resample to daily means
+    temp_data = sens_data.set_index('date')
+    temp_data.index = pd.to_datetime(temp_data.index)
+    daily_temps = temp_data['301 - Temp (°C) -60cm '].resample('D').mean()
+    daily_temps.dropna(inplace=True)
+    days = daily_temps.groupby(daily_temps.index.dayofyear).mean()
+    depths = np.array(np.ones(len(days)) * -0.6)  # Depth of -60cm
 
     # Initial guess: T_mean=10, delta_T=20, d=1, u=0
-    initial_guess = [10, 20, 1, 0]
+    initial_guess = [1, 0]
 
     # Curve fitting
-    popt, pcov = curve_fit(temp_model, (depths, days), temps, p0=initial_guess)
+    popt, pcov = curve_fit(temp_model, (depths, days), daily_temps, p0=initial_guess)
 
-    return modeled_temps, params
+    modeled_temps = temp_model((depths, days), *popt)
+
+    return modeled_temps
 
     
 if __name__ == '__main__':
@@ -326,10 +425,10 @@ if __name__ == '__main__':
 
     periods, trimmed_data = get_full_sensor_periods(sensor_data)
 
-    plot_weather_and_sensors(sensor_data) 
+    fig, ax = plot_weather_and_sensors(sensor_data) 
 
-    fig, axes = plot_weather_and_sensor_periods(sensor_data, periods)
+    #fig, axes = plot_weather_and_sensor_periods(sensor_data, periods)
 
-    #modeled_temps, params = fit_chambers_heat_model(trimed_temp)
+    modeled_temps = fit_chambers_heat_model(trimmed_data)
 
     plt.show()
