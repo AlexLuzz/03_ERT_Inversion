@@ -8,14 +8,14 @@ from scipy.optimize import curve_fit
 import numpy as np
 
 def load_TDR_data(sensor_data_folder):
-    # Get all CSV files in the folder
+    # Get all Excel files in the folder
     xlsx_files = glob.glob(os.path.join(sensor_data_folder, '*.xlsx'))
 
     dfs = []
     for file in xlsx_files:
         # Read Excel, replace "#/NA#" with np.nan
         df = pd.read_excel(file, na_values=["#/NA"], header=0)
-        # Try to parse Timestamp with both formats
+        # Parse Timestamp with both formats
         def parse_date(x):
             for fmt in ["%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S"]:
                 try:
@@ -23,33 +23,159 @@ def load_TDR_data(sensor_data_folder):
                 except Exception:
                     continue
             return pd.NaT
-        df['Timestamp'] = df['Timestamp'].apply(parse_date)
-        # Identify suffix from filename
-        if '301' in file:
-            suffix = '_301'
-        elif '302' in file:
-            suffix = '_302'
-        elif '303' in file:
-            suffix = '_303'
-        else:
-            raise ValueError(f"Filename {file} does not contain 301, 302, or 303.")
-        # Rename temperature columns
-        temp_cols = [col for col in df.columns if '-60cm' in col or '-90cm' in col]
-        rename_dict = {col: col + suffix for col in temp_cols}
-        df = df.rename(columns=rename_dict)
-        # Keep only Timestamp and temperature columns
-        keep_cols = ['Timestamp'] + list(rename_dict.values())
-        df = df[keep_cols]
+        df['date'] = df['Timestamp'].apply(parse_date)
+        df = df.drop(columns=['Timestamp'])
+
+        # Remove empty columns (all NaN or empty)
+        df = df.dropna(axis=1, how='all')
+        df = df.loc[:, ~df.columns.str.match('^Unnamed')]
+
         dfs.append(df)
 
-    # Merge on Timestamp
+    # Merge on 'date'
     df_merged = dfs[0]
     for df in dfs[1:]:
-        df_merged = pd.merge(df_merged, df, on='Timestamp', how='outer')
+        df_merged = pd.merge(df_merged, df, on='date', how='outer')
 
-    # Sort by Timestamp
-    df_merged = df_merged.sort_values('Timestamp').reset_index(drop=True)
+    # Sort by 'date'
+    df_merged = df_merged.sort_values('date').reset_index(drop=True)
+
+    # Move 'date' column to the first position
+    cols = df_merged.columns.tolist()
+    if 'date' in cols:
+        cols.insert(0, cols.pop(cols.index('date')))
+        df_merged = df_merged[cols]
+
     return df_merged
+
+def get_full_sensor_periods(temp_data):
+    """
+    Returns a tuple: (periods, trimmed_data)
+    - periods: list of (start, end) date tuples where all 6 sensor columns have data (not NaN).
+    - trimmed_data: temp_data trimmed to only include rows within any of the given periods.
+    """
+    # Identify the 6 sensor columns
+    sensor_cols = [col for col in temp_data.columns if '-60cm' in col or '-90cm' in col]
+    # Boolean mask: True where all 6 sensors have data
+    mask = temp_data[sensor_cols].notna().all(axis=1)
+    periods = []
+    in_period = False
+    for idx, val in enumerate(mask):
+        if val and not in_period:
+            start = temp_data['date'].iloc[idx]
+            in_period = True
+        elif not val and in_period:
+            end = temp_data['date'].iloc[idx-1]
+            periods.append((start, end))
+            in_period = False
+    # Handle if the last period goes to the end
+    if in_period:
+        end = temp_data['date'].iloc[-1]
+        periods.append((start, end))
+
+    # Build mask for all periods using 'date' column
+    mask = pd.Series(False, index=temp_data.index)
+    for start, end in periods:
+        mask |= (temp_data['date'] >= start) & (temp_data['date'] <= end)
+    # Trim the data to only include rows within any of the periods
+    trimmed_data = temp_data[mask].reset_index(drop=True)
+    
+    return periods, trimmed_data
+
+def plot_weather_and_sensor_periods(
+    temp_data,
+    period_list=None,
+    temp_step=2,
+    precip_step=24,
+    plot_precip=False
+):
+    """
+    Plots weather temperature (and optionally precipitation) and sensor data for each period.
+    Each period is shown in its own subplot (1 row, X columns).
+    temp_data: DataFrame with 'Timestamp' and sensor columns.
+    """
+    # Fetch weather data for the full range
+    start_date = period_list[0][0]
+    end_date = period_list[-1][1]
+    data = Hourly('SOK6B', start_date, end_date).fetch()
+    precipitation = data['prcp'].fillna(0)
+    temperature = data['temp']
+    times = data.index
+
+    # Aggregate weather data
+    times_aggregated_temp = times[::temp_step]
+    temperature_aggregated = [temperature.iloc[i] for i in range(0, len(temperature), temp_step)]
+    times_aggregated_precip = times[::precip_step]
+    precipitation_aggregated = [sum(precipitation[i:i + precip_step]) for i in range(0, len(precipitation), precip_step)]
+
+    # Convert period start/end to datetime
+    period_list = [(pd.to_datetime(start), pd.to_datetime(end)) for start, end in period_list]
+
+    n_periods = len(period_list)
+    fig, axes = plt.subplots(1, n_periods, figsize=(5 * n_periods, 5), sharey=True)
+
+    # For legend
+    handles_labels = []
+
+    # Sensor columns and colors
+    sensor_cols = [col for col in temp_data.columns if '-60cm' in col or '-90cm' in col]
+    colors = ['red', 'green', 'blue', 'purple', 'brown', 'magenta']
+
+    for i, (p_start, p_end) in enumerate(period_list):
+        ax = axes[i]
+        # Filter data for this period
+        mask = (temp_data['date'] >= p_start) & (temp_data['date'] <= p_end)
+        period_df = temp_data.loc[mask]
+
+        # Filter temperature for this period
+        mask_temp = (times_aggregated_temp >= p_start) & (times_aggregated_temp <= p_end)
+        t_temp = times_aggregated_temp[mask_temp]
+        temp = pd.Series(temperature_aggregated, index=times_aggregated_temp)[mask_temp]
+
+        l1, = ax.plot(t_temp, temp, color='orange', linestyle='-', linewidth=2, label='Weather Temp (°C)')
+
+        # Plot each sensor temperature column
+        sensor_lines = []
+        for j, col in enumerate(sorted(sensor_cols)):
+            l2, = ax.plot(
+                period_df['date'],
+                period_df[col],
+                label=col,
+                color=colors[j % len(colors)],
+                linewidth=1.5
+            )
+            sensor_lines.append(l2)
+
+        ax.set_ylabel('Temperature (°C)')
+        ax.axhline(0, color='black', linestyle='--', linewidth=1.5, alpha=0.8)
+        ax.set_title(f"Period {i+1}\n{p_start.date()} to {p_end.date()}")
+
+        # Format x-axis
+        locator = mdates.AutoDateLocator()
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=60, ha='right')
+        ax.grid(which='major', color='grey', linestyle='-', linewidth=0.5, alpha=0.6)
+
+        # Collect handles/labels for legend
+        if i == 0:
+            handles, labels = ax.get_legend_handles_labels()
+            handles_labels.extend(zip(handles, labels))
+
+    # Remove duplicate labels for legend
+    seen = set()
+    unique_handles_labels = []
+    for h, l in handles_labels:
+        if l not in seen:
+            unique_handles_labels.append((h, l))
+            seen.add(l)
+    handles, labels = zip(*unique_handles_labels)
+
+    # Place legend outside the plot
+    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=len(labels))
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    return fig, axes
 
 def plot_weather(start_date, end_date, ax=None, temp_step=2, precip_step=24, plot_precip=False):
     """
@@ -136,135 +262,15 @@ def plot_weather(start_date, end_date, ax=None, temp_step=2, precip_step=24, plo
 
     return fig, ax
 
-def plot_weather_sensor_periods(
-    temp_data,
-    temp_step=2,
-    precip_step=24,
-    plot_precip=False,
-    period_list=None
-):
-    """
-    Plots weather temperature (and optionally precipitation) and sensor data for each period.
-    Each period is shown in its own subplot (1 row, X columns).
-    temp_data: DataFrame with 'Timestamp' and sensor columns.
-    """
-    # Fetch weather data for the full range
-    start_date = period_list[0][0]
-    end_date = period_list[-1][1]
-    data = Hourly('SOK6B', start_date, end_date).fetch()
-    precipitation = data['prcp'].fillna(0)
-    temperature = data['temp']
-    times = data.index
-
-    # Aggregate weather data
-    times_aggregated_temp = times[::temp_step]
-    temperature_aggregated = [temperature.iloc[i] for i in range(0, len(temperature), temp_step)]
-    times_aggregated_precip = times[::precip_step]
-    precipitation_aggregated = [sum(precipitation[i:i + precip_step]) for i in range(0, len(precipitation), precip_step)]
-
-
-    # Ensure Timestamp is datetime
-    temp_data = temp_data.copy()
-    temp_data['Timestamp'] = pd.to_datetime(temp_data['Timestamp'])
-
-    # Convert period start/end to datetime
-    period_list = [(pd.to_datetime(start), pd.to_datetime(end)) for start, end in period_list]
-
-    n_periods = len(period_list)
-    fig, axes = plt.subplots(1, n_periods, figsize=(5 * n_periods, 5), sharey=True)
-
-    # For legend
-    handles_labels = []
-
-    # Sensor columns and colors
-    sensor_cols = [col for col in temp_data.columns if '-60cm' in col or '-90cm' in col]
-    colors = ['red', 'green', 'blue', 'purple', 'brown', 'magenta']
-
-    for i, (p_start, p_end) in enumerate(period_list):
-        ax = axes[i]
-        # Filter data for this period
-        mask = (temp_data['Timestamp'] >= p_start) & (temp_data['Timestamp'] <= p_end)
-        period_df = temp_data.loc[mask]
-
-        # Filter temperature for this period
-        mask_temp = (times_aggregated_temp >= p_start) & (times_aggregated_temp <= p_end)
-        t_temp = times_aggregated_temp[mask_temp]
-        temp = pd.Series(temperature_aggregated, index=times_aggregated_temp)[mask_temp]
-
-        l1, = ax.plot(t_temp, temp, color='orange', linestyle='-', linewidth=2, label='Weather Temp (°C)')
-
-        # Plot each sensor temperature column
-        sensor_lines = []
-        for j, col in enumerate(sorted(sensor_cols)):
-            l2, = ax.plot(
-                period_df['Timestamp'],
-                period_df[col],
-                label=col,
-                color=colors[j % len(colors)],
-                linewidth=1.5
-            )
-            sensor_lines.append(l2)
-
-        ax.set_ylabel('Temperature (°C)')
-        ax.axhline(0, color='black', linestyle='--', linewidth=1.5, alpha=0.8)
-        ax.set_title(f"Period {i+1}\n{p_start.date()} to {p_end.date()}")
-
-        # Format x-axis
-        locator = mdates.AutoDateLocator()
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=60, ha='right')
-        ax.grid(which='major', color='grey', linestyle='-', linewidth=0.5, alpha=0.6)
-
-        # Collect handles/labels for legend
-        if i == 0:
-            handles, labels = ax.get_legend_handles_labels()
-            handles_labels.extend(zip(handles, labels))
-
-    # Remove duplicate labels for legend
-    seen = set()
-    unique_handles_labels = []
-    for h, l in handles_labels:
-        if l not in seen:
-            unique_handles_labels.append((h, l))
-            seen.add(l)
-    handles, labels = zip(*unique_handles_labels)
-
-    # Place legend outside the plot
-    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=len(labels))
-
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    return fig, axes
-
-def get_full_sensor_periods(temp_data):
-    """
-    Returns a list of (start, end) Timestamp tuples where all 6 sensor columns have data (not NaN).
-    """
-    # Identify the 6 sensor columns
-    sensor_cols = [col for col in temp_data.columns if '-60cm' in col or '-90cm' in col]
-    # Boolean mask: True where all 6 sensors have data
-    mask = temp_data[sensor_cols].notna().all(axis=1)
-    periods = []
-    in_period = False
-    for idx, val in enumerate(mask):
-        if val and not in_period:
-            start = temp_data['Timestamp'].iloc[idx]
-            in_period = True
-        elif not val and in_period:
-            end = temp_data['Timestamp'].iloc[idx-1]
-            periods.append((start, end))
-            in_period = False
-    # Handle if the last period goes to the end
-    if in_period:
-        end = temp_data['Timestamp'].iloc[-1]
-        periods.append((start, end))
-    return periods
-
-def plot_weather_and_sensors(temp_data, start_date, end_date, plot_precip=False):
+def plot_weather_and_sensors(temp_data, plot_precip=False):
     """
     Plots weather temperature (and optionally precipitation) and the 6 sensor temperature columns on the same time axis.
     All temperatures (weather and sensors) are plotted on the main y-axis (left).
     """
+    # Set start and end date based on date column in temp_data
+    start_date = temp_data['date'].min()
+    end_date = temp_data['date'].max()
+
     # Plot weather data and get axes
     fig, ax = plot_weather(start_date, end_date, plot_precip=plot_precip)
 
@@ -272,7 +278,7 @@ def plot_weather_and_sensors(temp_data, start_date, end_date, plot_precip=False)
     sensor_cols = [col for col in temp_data.columns if '-60cm' in col or '-90cm' in col]
     colors = ['red', 'green', 'blue', 'purple', 'brown', 'magenta']
     for i, col in enumerate(sorted(sensor_cols)):
-        ax.plot(temp_data['Timestamp'], temp_data[col], label=col, color=colors[i % len(colors)], linewidth=1.5)
+        ax.plot(temp_data['date'], temp_data[col], label=col, color=colors[i % len(colors)], linewidth=1.5)
 
     # Add legend for all temperature curves
     ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1), title="Temperature")
@@ -288,6 +294,12 @@ def fit_chambers_heat_model(temp_data):
         sin_thingy = (2 * np.pi * t / 365 + phase - z / d)
         return T_mean + (delta_T / 2) * np.exp(exponent) * np.sin(sin_thingy)
 
+    # T_mean is the mean yearly temperature, we take the last 365 days of the data to estimate it.
+    last_year = temp_data['Timestamp'].max() - pd.Timedelta(days=365)
+    temp_data_last_year = temp_data[temp_data['Timestamp'] >= last_year]
+    T_mean = temp_data_last_year[[col for col in temp_data_last_year.columns if '-60cm' in col or '-90cm' in col]].mean().mean()
+    # delta_T is the amplitude of the temperature variation,
+
     depths = np.array([-0.6, -0.9, -0.6, -0.9, -0.6, -0.9])
     days = np.array(pd.to_datetime(temp_data['Timestamp']))
     temperatures = temp_data[[col for col in temp_data.columns if '-60cm' in col or '-90cm' in col]].values
@@ -301,34 +313,6 @@ def fit_chambers_heat_model(temp_data):
 
     return modeled_temps, params
 
-def trimed_temp_data(temp_data, periods):
-    """
-    Returns temp_data trimmed to only include rows within any of the given periods.
-
-    Parameters:
-        temp_data (pd.DataFrame): DataFrame with a DatetimeIndex or a 'Timestamp' column.
-        periods (list of tuple): List of (start_datetime, end_datetime) tuples.
-
-    Returns:
-        pd.DataFrame: Trimmed temp_data.
-    """
-    # Ensure periods are pd.Timestamp
-    periods = [(pd.to_datetime(start), pd.to_datetime(end)) for start, end in periods]
-
-    # Ensure index is datetime
-    if 'Timestamp' in temp_data.columns:
-        temp_data = temp_data.copy()
-        temp_data['Timestamp'] = pd.to_datetime(temp_data['Timestamp'])
-        idx = temp_data['Timestamp']
-    else:
-        idx = temp_data.index
-
-    # Build mask for all periods
-    mask = pd.Series(False, index=temp_data.index)
-    for start, end in periods:
-        mask |= (idx >= start) & (idx <= end)
-
-    return temp_data[mask]
     
 if __name__ == '__main__':
 
@@ -338,23 +322,14 @@ if __name__ == '__main__':
 
     Onedrive_path = f'C:/Users/{user}/OneDrive - ETS/General - Projet IV 2023 - GTO365/01-projet_IV-Mtl_Laval/03-Berlier-Bergman/05-donnees-terrains/'
     
-    temp_data = load_TDR_data(Onedrive_path)
+    sensor_data = load_TDR_data(Onedrive_path)
 
-    periods = get_full_sensor_periods(temp_data)
+    periods, trimmed_data = get_full_sensor_periods(sensor_data)
 
-    trimed_temp = trimed_temp_data(temp_data, periods)
+    plot_weather_and_sensors(sensor_data) 
 
-    # Set start and end date based on your data or manually
-    start_date = temp_data['Timestamp'].min()
-    end_date = temp_data['Timestamp'].max()
+    fig, axes = plot_weather_and_sensor_periods(sensor_data, periods)
 
-    #plot_weather_and_sensors(temp_data, start_date, end_date) 
-
-    #plot_weather_and_sensors(temp_data, periods[2][0], periods[2][1])
-
-    # Plot weather and sensors for each period
-    #fig, axes = plot_weather_sensor_periods(temp_data, period_list=periods)
-
-    modeled_temps, params = fit_chambers_heat_model(trimed_temp)
+    #modeled_temps, params = fit_chambers_heat_model(trimed_temp)
 
     plt.show()
