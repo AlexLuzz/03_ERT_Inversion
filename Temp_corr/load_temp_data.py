@@ -110,7 +110,6 @@ def plot_weather_and_sensor_periods(
 
     # Convert period start/end to datetime
     period_list = [(pd.to_datetime(start), pd.to_datetime(end)) for start, end in period_list]
-
     n_periods = len(period_list)
     fig, axes = plt.subplots(1, n_periods, figsize=(5 * n_periods, 5), sharey=True)
 
@@ -119,6 +118,7 @@ def plot_weather_and_sensor_periods(
 
     # Sensor columns and colors
     sensor_cols = [col for col in temp_data.columns if '-60cm' in col or '-90cm' in col]
+    sensor_cols = sensor_cols[:2]  # Limit to first 6 sensor columns
     colors = ['red', 'green', 'blue', 'purple', 'brown', 'magenta']
 
     for i, (p_start, p_end) in enumerate(period_list):
@@ -300,6 +300,7 @@ def plot_weather_and_sensors(sensor_data, plot_precip=False):
 
     # Plot each sensor temperature column on the same axis as weather temperature
     sensor_cols = [col for col in sensor_data.columns if '-60cm' in col or '-90cm' in col]
+    sensor_cols = sensor_cols[:2]
     colors = ['red', 'green', 'blue', 'purple', 'brown', 'magenta']
     for i, col in enumerate(sorted(sensor_cols)):
         ax.plot(sensor_data['date'], sensor_data[col], label=col, color=colors[i % len(colors)], linewidth=1.5)
@@ -309,109 +310,56 @@ def plot_weather_and_sensors(sensor_data, plot_precip=False):
     fig.tight_layout()
     return fig, ax
 
-def plot_modeled_and_sensor_periods(modeled_temp_data, sensor_data, period_list):
-
-    period_list = [(pd.to_datetime(start), pd.to_datetime(end)) for start, end in period_list]
-
-    n_periods = len(period_list)
-    fig, axes = plt.subplots(1, n_periods, figsize=(5 * n_periods, 5), sharey=True)
-
-    # For legend
-    handles_labels = []
-
-    # Sensor columns and colors
-    sensor_cols = [col for col in sensor_data.columns if '-60cm' in col or '-90cm' in col]
-    colors = ['red', 'green', 'blue', 'purple', 'brown', 'magenta']
-
-    for i, (p_start, p_end) in enumerate(period_list[0]):
-        ax = axes[i]
-        # Filter data for this period
-        mask = (sensor_data['date'] >= p_start) & (sensor_data['date'] <= p_end)
-        period_df = sensor_data.loc[mask]
-
-
-        l1, = ax.plot(sensor_data['date'], modeled_temp_data.loc[mask], color='orange', linestyle='-', linewidth=2, label='Weather Temp (°C)')
-
-        # Plot each sensor temperature column
-        sensor_lines = []
-        for j, col in enumerate(sorted(sensor_cols)):
-            l2, = ax.plot(
-                period_df['date'],
-                period_df[col],
-                label=col,
-                color=colors[j % len(colors)],
-                linewidth=1.5
-            )
-            sensor_lines.append(l2)
-
-        ax.set_ylabel('Temperature (°C)')
-        ax.axhline(0, color='black', linestyle='--', linewidth=1.5, alpha=0.8)
-        ax.set_title(f"Period {i+1}\n{p_start.date()} to {p_end.date()}")
-
-        # Format x-axis
-        locator = mdates.AutoDateLocator()
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=60, ha='right')
-        ax.grid(which='major', color='grey', linestyle='-', linewidth=0.5, alpha=0.6)
-
-        # Collect handles/labels for legend
-        if i == 0:
-            handles, labels = ax.get_legend_handles_labels()
-            handles_labels.extend(zip(handles, labels))
-
-    # Remove duplicate labels for legend
-    seen = set()
-    unique_handles_labels = []
-    for h, l in handles_labels:
-        if l not in seen:
-            unique_handles_labels.append((h, l))
-            seen.add(l)
-    handles, labels = zip(*unique_handles_labels)
-
-    # Place legend outside the plot
-    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=len(labels))
-
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    return fig, axes
-
 def fit_chambers_heat_model(sens_data):
-
+    # Estimate T_mean and delta_T from weather data over the last 365 days
     temp_df, _ = fetch_and_aggregate_weather(sens_data['date'].min(), sens_data['date'].max(), 24)
-
-    # T_mean is the mean yearly temperature, we take the last 365 days of the data to estimate it.
     last_year = temp_df['date'].max() - pd.Timedelta(days=365)
     temp_data_last_year = temp_df[temp_df['date'] >= last_year]
     T_mean = temp_data_last_year['temperature'].mean()
-    # delta_T is the amplitude of the temperature variation (max - min) over the last year
     delta_T = temp_data_last_year['temperature'].max() - temp_data_last_year['temperature'].min()
 
-    # Heat equation model from Chambers et al.
+    # Set datetime index
+    temp_data = sens_data.set_index('date')
+    temp_data.index = pd.to_datetime(temp_data.index)
+
+    # Resample to daily means for each sensor
+    temp_60cm = temp_data['301 - Temp (°C) -60cm '].resample('D').mean()
+    temp_90cm = temp_data['301 - Temp (°C) -90cm '].resample('D').mean()
+
+    # Align on shared dates and drop missing values
+    combined = pd.concat([temp_60cm, temp_90cm], axis=1, keys=['temp60', 'temp90']).dropna()
+
+    # Use the first date as reference for time conversion
+    ref_date = combined.index.min()
+    t_days = (combined.index - ref_date).days.values.astype(float)
+
+    # Build input vectors for depths and temperatures
+    temps_combined = np.concatenate([combined['temp60'].values, combined['temp90'].values])
+    depths_combined = np.concatenate([
+        np.full_like(combined['temp60'].values, -0.6),  # -60 cm
+        np.full_like(combined['temp90'].values, -0.9)   # -90 cm
+    ])
+    t_combined = np.concatenate([t_days, t_days])  # duplicated time for both depths
+
+    # Chambers et al. heat model
     def temp_model(inputs, d, phase):
         z, t = inputs
         exponent = -z / d
-        sin_part = (2 * np.pi * t / 365) + phase - (z / d)
+        sin_part = (2 * np.pi * t / 365.0) + phase - (z / d)
         return T_mean + (delta_T / 2) * np.exp(exponent) * np.sin(sin_part)
 
-    # First sensor data for fitting, depth is -0.6m, it stays constant throughout the year.
-    # Resample to daily means
-    temp_data = sens_data.set_index('date')
-    temp_data.index = pd.to_datetime(temp_data.index)
-    daily_temps = temp_data['301 - Temp (°C) -60cm '].resample('D').mean()
-    daily_temps.dropna(inplace=True)
-    days = daily_temps.groupby(daily_temps.index.dayofyear).mean()
-    depths = np.array(np.ones(len(days)) * -0.6)  # Depth of -60cm
+    # Fit the model to combined data
+    initial_guess = [1.0, 0.0]  # d, phase
+    popt, pcov = curve_fit(temp_model, (depths_combined, t_combined), temps_combined, p0=initial_guess)
 
-    # Initial guess: T_mean=10, delta_T=20, d=1, u=0
-    initial_guess = [1, 0]
+    # Predict modeled temps for the 60cm depth using fitted parameters
+    modeled_temps_60 = temp_model((np.full_like(t_days, -0.6), t_days), *popt)
 
-    # Curve fitting
-    popt, pcov = curve_fit(temp_model, (depths, days), daily_temps, p0=initial_guess)
+    # Convert back to datetime for plotting or analysis
+    modeled_dates = ref_date + pd.to_timedelta(t_days, unit='D')
+    observed_temps_60 = combined['temp60']
 
-    modeled_temps = temp_model((depths, days), *popt)
-
-    return modeled_temps
-
+    return modeled_temps_60, observed_temps_60, modeled_dates, popt
     
 if __name__ == '__main__':
 
@@ -425,10 +373,20 @@ if __name__ == '__main__':
 
     periods, trimmed_data = get_full_sensor_periods(sensor_data)
 
-    fig, ax = plot_weather_and_sensors(sensor_data) 
+    #fig, ax = plot_weather_and_sensors(sensor_data) 
 
     #fig, axes = plot_weather_and_sensor_periods(sensor_data, periods)
 
-    modeled_temps = fit_chambers_heat_model(trimmed_data)
+    modeled_temps_60, observed_temps_60, days_of_year, popt = fit_chambers_heat_model(sensor_data)
+
+    plt.figure(figsize=(10, 5))
+    plt.scatter(days_of_year, modeled_temps_60, label='Modeled Temps', marker='o')
+    plt.scatter(days_of_year, observed_temps_60, label='Daily Temps', marker='x')
+    plt.xlabel('Days')
+    plt.ylabel('Temperature')
+    plt.title('Modeled vs Daily Temperatures')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
     plt.show()
