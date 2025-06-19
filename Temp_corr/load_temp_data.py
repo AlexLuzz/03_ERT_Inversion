@@ -349,7 +349,7 @@ def fit_chambers_heat_model(sens_data):
         return T_mean + (delta_T / 2) * np.exp(exponent) * np.sin(sin_part)
 
     # Fit the model to combined data
-    initial_guess = [1.0, 0.0]  # d, phase
+    initial_guess = [-0.5, 1]  # d, phase
     popt, pcov = curve_fit(temp_model, (depths_combined, t_combined), temps_combined, p0=initial_guess)
 
     # Predict modeled temps for the 60cm depth using fitted parameters
@@ -365,7 +365,7 @@ if __name__ == '__main__':
 
     user_ETS = 'AQ96560'
     user_home = 'alexi'
-    user = user_ETS
+    user = user_home
 
     Onedrive_path = f'C:/Users/{user}/OneDrive - ETS/General - Projet IV 2023 - GTO365/01-projet_IV-Mtl_Laval/03-Berlier-Bergman/05-donnees-terrains/'
     
