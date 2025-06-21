@@ -324,7 +324,7 @@ def fit_chambers_heat_model(sens_data):
 
     # Resample to daily means for each sensor
     temp_60cm = temp_data['301 - Temp (°C) -60cm '].resample('D').mean()
-    temp_90cm = temp_data['301 - Temp (°C) -90cm '].resample('D').mean()
+    temp_90cm = temp_data['301 - Temp (°C) -120cm '].resample('D').mean()
 
     # Align on shared dates and drop missing values
     combined = pd.concat([temp_60cm, temp_90cm], axis=1, keys=['temp60', 'temp90']).dropna()
@@ -375,7 +375,7 @@ if __name__ == '__main__':
 
     #fig, ax = plot_weather_and_sensors(sensor_data) 
 
-    #fig, axes = plot_weather_and_sensor_periods(sensor_data, periods)
+    fig, axes = plot_weather_and_sensor_periods(sensor_data, periods)
 
     modeled_temps_60, observed_temps_60, days_of_year, popt = fit_chambers_heat_model(sensor_data)
 
