@@ -24,45 +24,106 @@ class DebugCapture:
     def clear(self):
         self.captured_output = []
 
-def load_TDR_data(sensor_data_folder):
-    # Get all Excel files in the folder
-    xlsx_files = glob.glob(os.path.join(sensor_data_folder, '*.xlsx'))
-
+def load_TDR_data(excel_file_path):
+    """
+    Load data from a single Excel file with multiple sheets and merge them on Timestamp column
+    
+    Parameters:
+    -----------
+    excel_file_path : str
+        Path to the Excel file containing multiple sheets
+    
+    Returns:
+    --------
+    pandas.DataFrame
+        Merged dataframe with all sheets combined on 'date' column
+    """
+    
+    # Read all sheet names from the Excel file
+    excel_file = pd.ExcelFile(excel_file_path)
+    sheet_names = excel_file.sheet_names
+    
+    print(f"Found {len(sheet_names)} sheets in {excel_file_path}")
+    print(f"Sheet names: {sheet_names}")
+    
     dfs = []
-    for file in xlsx_files:
-        # Read Excel, replace "#/NA#" with np.nan
-        df = pd.read_excel(file, na_values=["#/NA"], header=0)
-        # Parse Timestamp with both formats
-        def parse_date(x):
-            for fmt in ["%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S"]:
+    
+    for sheet_name in sheet_names:
+        print(f"Processing sheet: {sheet_name}")
+        
+        try:
+            # Read each sheet, replace "#/NA#" with np.nan
+            df = pd.read_excel(excel_file_path, sheet_name=sheet_name, na_values=["#/NA"], header=0)
+            
+            # Check if Timestamp column exists
+            if 'Timestamp' not in df.columns:
+                print(f"Warning: No 'Timestamp' column found in sheet '{sheet_name}'. Skipping this sheet.")
+                continue
+            
+            # Parse Timestamp with multiple formats
+            def parse_date(x):
+                if pd.isna(x):
+                    return pd.NaT
+                for fmt in ["%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%m/%d/%Y %H:%M:%S"]:
+                    try:
+                        return pd.to_datetime(x, format=fmt)
+                    except:
+                        continue
+                # If no format works, try pandas default parsing
                 try:
-                    return pd.to_datetime(x, format=fmt)
-                except Exception:
-                    continue
-            return pd.NaT
-        df['date'] = df['Timestamp'].apply(parse_date)
-        df = df.drop(columns=['Timestamp'])
-
-        # Remove empty columns (all NaN or empty)
-        df = df.dropna(axis=1, how='all')
-        df = df.loc[:, ~df.columns.str.match('^Unnamed')]
-
-        dfs.append(df)
-
-    # Merge on 'date'
+                    return pd.to_datetime(x)
+                except:
+                    return pd.NaT
+            
+            # Convert Timestamp to datetime and rename to 'date'
+            df['date'] = df['Timestamp'].apply(parse_date)
+            df = df.drop(columns=['Timestamp'])
+            
+            # Remove rows where date conversion failed
+            df = df.dropna(subset=['date'])
+            
+            if len(df) == 0:
+                print(f"Warning: No valid timestamps found in sheet '{sheet_name}'. Skipping this sheet.")
+                continue
+            
+            # Remove empty columns (all NaN or empty)
+            df = df.dropna(axis=1, how='all')
+            df = df.loc[:, ~df.columns.str.match('^Unnamed')]
+            
+            print(f"  - Sheet '{sheet_name}': {len(df)} rows, {len(df.columns)-1} data columns")
+            print(f"  - Date range: {df['date'].min()} to {df['date'].max()}")
+            
+            dfs.append(df)
+            
+        except Exception as e:
+            print(f"Error processing sheet '{sheet_name}': {str(e)}")
+            continue
+    
+    if not dfs:
+        raise ValueError("No valid sheets found with processable data")
+    
+    # Merge all dataframes on 'date'
+    print(f"\nMerging {len(dfs)} sheets...")
+    
     df_merged = dfs[0]
-    for df in dfs[1:]:
+    for i, df in enumerate(dfs[1:], 1):
+        print(f"Merging sheet {i+1}/{len(dfs)}...")
         df_merged = pd.merge(df_merged, df, on='date', how='outer')
-
+    
     # Sort by 'date'
     df_merged = df_merged.sort_values('date').reset_index(drop=True)
-
+    
     # Move 'date' column to the first position
     cols = df_merged.columns.tolist()
     if 'date' in cols:
         cols.insert(0, cols.pop(cols.index('date')))
         df_merged = df_merged[cols]
-
+    
+    print(f"\nMerging complete!")
+    print(f"Final dataframe: {len(df_merged)} rows, {len(df_merged.columns)} columns")
+    print(f"Date range: {df_merged['date'].min()} to {df_merged['date'].max()}")
+    print(f"Columns: {df_merged.columns.tolist()}")
+    
     return df_merged
 
 def fetch_and_aggregate_weather(start_date, end_date, temp_step=2, precip_step=24):
@@ -519,8 +580,8 @@ def fit_chambers_heat_model_improved(sens_data, borehole='301', debug=True, capt
         temp_data.index = pd.to_datetime(temp_data.index)
         
         # Get sensor columns for the specified borehole
-        col_60 = f'{borehole} - Temp (°C) -60cm '
-        col_120 = f'{borehole} - Temp (°C) -120cm '
+        col_60 = f'{borehole} - Temp (°C) -60cm'
+        col_120 = f'{borehole} - Temp (°C) -120cm'
         
         # Check if columns exist
         if col_60 not in temp_data.columns or col_120 not in temp_data.columns:
@@ -965,7 +1026,7 @@ def model_equation_txt_improved():
     """
     return equation_display
 
-def analyze_all_boreholes(sens_data, improved=False, save_pdf=False, pdf_filename=None):
+def analyze_all_boreholes(sens_data, data_to_analyze = ['BB - 301', 'BB - 302', 'BB - 303'], improved=False, save_pdf=False, pdf_filename=None):
     """Analyze all three boreholes with original Chambers model and optionally save to PDF"""
     
     results_all = {}
@@ -976,7 +1037,7 @@ def analyze_all_boreholes(sens_data, improved=False, save_pdf=False, pdf_filenam
     else:
         all_debug_output.append(model_equation_txt())
 
-    for borehole in ['301', '302', '303']:
+    for borehole in data_to_analyze:
         print(f"\n{'='*60}")
         print(f"Analyzing Borehole {borehole} - Original Chambers Model")
         print(f"{'='*60}")
@@ -1065,16 +1126,16 @@ if __name__ == '__main__':
 
     user_ETS = 'AQ96560'
     user_home = 'alexi'
-    user = user_home
+    user = user_ETS
 
     sensor_data_path = f'C:/Users/{user}/OneDrive - ETS/General - Projet IV 2023 - GTO365/01-projet_IV-Mtl_Laval/03-Berlier-Bergman/05-donnees-terrains/'
     geophy_drive_path = f'C:/Users/{user}/OneDrive - ETS/02 - Alexis Luzy/99 - Mémoire -Article/'
-    sens_data = load_TDR_data(sensor_data_path)
+    sens_data = load_TDR_data(f'C:/Users/{user}/OneDrive - ETS/02 - Alexis Luzy/Projet_IV_TDR_Data.xlsx')
 
     # Run original Chambers model analysis with PDF export
     modeled_original = analyze_all_boreholes(
         sens_data, 
         save_pdf=True, 
         improved=True,
-        pdf_filename=geophy_drive_path + "chambers_improved_model_V2.pdf"
+        pdf_filename=geophy_drive_path + "aaaaa.pdf"
     )
