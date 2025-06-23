@@ -98,7 +98,7 @@ def fit_chambers_heat_model_improved(sens_data, borehole='301', debug=True):
         damping = np.exp(-z / d)
         
         # Phase lag due to depth (delay increases with depth)
-        phase_lag = -z / d
+        phase_lag = -z / 4*d
         
         # Temperature model
         temp = T_surf_mean + delta_T_surf * damping * np.sin(t_annual + phase_shift + phase_lag)
@@ -234,61 +234,7 @@ def fit_chambers_heat_model_improved(sens_data, borehole='301', debug=True):
         
     except Exception as e:
         print(f"Fitting failed: {str(e)}")
-        print("Trying simpler approach...")
-        return fit_simple_sinusoid(combined, t_days, depths, debug), temp_df
-
-def fit_simple_sinusoid(combined, t_days, depths, debug=True):
-    """Fallback: fit simple sinusoidal functions to each depth separately"""
-    
-    def simple_sin(t, A, B, C, D):
-        """Simple sinusoid: A + B * sin(C * t + D)"""
-        return A + B * np.sin(C * t + D)
-    
-    results_60 = None
-    results_120 = None
-    
-    # Fit 60cm data
-    try:
-        # Initial guess for 60cm
-        A_init = combined['temp60'].mean()
-        B_init = (combined['temp60'].max() - combined['temp60'].min()) / 2
-        C_init = 2 * np.pi / 365.25  # Annual frequency
-        D_init = 0
-        
-        popt_60, _ = curve_fit(simple_sin, t_days, combined['temp60'].values, 
-                              p0=[A_init, B_init, C_init, D_init])
-        pred_60 = simple_sin(t_days, *popt_60)
-        r2_60 = 1 - np.sum((combined['temp60'] - pred_60)**2) / np.sum((combined['temp60'] - combined['temp60'].mean())**2)
-        
-        if debug:
-            print(f"60cm simple fit - R²: {r2_60:.3f}")
-        
-        results_60 = {'params': popt_60, 'pred': pred_60, 'r2': r2_60}
-    except:
-        if debug:
-            print("60cm simple fit failed")
-    
-    # Fit 120cm data
-    try:
-        A_init = combined['temp120'].mean()
-        B_init = (combined['temp120'].max() - combined['temp120'].min()) / 2
-        C_init = 2 * np.pi / 365.25
-        D_init = 0
-        
-        popt_120, _ = curve_fit(simple_sin, t_days, combined['temp120'].values, 
-                               p0=[A_init, B_init, C_init, D_init])
-        pred_120 = simple_sin(t_days, *popt_120)
-        r2_120 = 1 - np.sum((combined['temp120'] - pred_120)**2) / np.sum((combined['temp120'] - combined['temp120'].mean())**2)
-        
-        if debug:
-            print(f"120cm simple fit - R²: {r2_120:.3f}")
-        
-        results_120 = {'params': popt_120, 'pred': pred_120, 'r2': r2_120}
-    except:
-        if debug:
-            print("120cm simple fit failed")
-    
-    return {'simple_60': results_60, 'simple_120': results_120, 'combined': combined, 'time_days': t_days}
+        return None, None
 
 def plot_fit_results_improved(results, weather_data, borehole='301'):
     """Improved plotting with weather data and extended predictions"""
@@ -408,7 +354,7 @@ if __name__ == '__main__':
 
     user_ETS = 'AQ96560'
     user_home = 'alexi'
-    user = user_home
+    user = user_ETS
 
     Onedrive_path = f'C:/Users/{user}/OneDrive - ETS/General - Projet IV 2023 - GTO365/01-projet_IV-Mtl_Laval/03-Berlier-Bergman/05-donnees-terrains/'
     
