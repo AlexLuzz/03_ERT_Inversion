@@ -342,8 +342,10 @@ def fit_chambers_model_original(sens_data, borehole='301', debug=True, capture_d
         weather_daily = temp_df.set_index('date').resample('D').mean()
         T_weather_mean = weather_daily['temperature'].mean()
         #T_weather_mean = trim_mean(weather_daily['temperature'], proportiontocut=0.1)
+        T_weather_mean = 12
         delta_T_weather = (weather_daily['temperature'].max() - weather_daily['temperature'].min())
         #delta_T_weather = weather_daily['temperature'].quantile(0.9) - weather_daily['temperature'].quantile(0.1) 
+        delta_T_weather = 17
 
         if debug:
             print(f"Weather-based air temperature parameters:")
@@ -356,8 +358,8 @@ def fit_chambers_model_original(sens_data, borehole='301', debug=True, capture_d
         temp_data.index = pd.to_datetime(temp_data.index)
         
         # Get sensor columns for the specified borehole
-        col_60 = f'{borehole} - Temp (°C) -60cm '
-        col_120 = f'{borehole} - Temp (°C) -120cm '
+        col_60 = f'{borehole} - Temp (°C) -60cm'
+        col_120 = f'{borehole} - Temp (°C) -120cm'
         
         # Check if columns exist
         if col_60 not in temp_data.columns or col_120 not in temp_data.columns:
@@ -423,7 +425,7 @@ def fit_chambers_model_original(sens_data, borehole='301', debug=True, capture_d
         # Parameter bounds - only for the two fitted parameters
         bounds = (
             [0.1, -2*np.pi],  # Lower bounds: [d_min, phase_min]
-            [5.0, 2*np.pi]    # Upper bounds: [d_max, phase_max]
+            [10, 2*np.pi]    # Upper bounds: [d_max, phase_max]
         )
         
         # Fit the model - only damping depth and phase shift
@@ -1026,7 +1028,7 @@ def model_equation_txt_improved():
     """
     return equation_display
 
-def analyze_all_boreholes(sens_data, data_to_analyze = ['BB - 301', 'BB - 302', 'BB - 303'], improved=False, save_pdf=False, pdf_filename=None):
+def analyze_all_boreholes(sens_data, data_to_analyze = ['BB - 301', 'BB - 302', 'BB - 303'], improved=False, save_pdf=True, pdf_filename=None):
     """Analyze all three boreholes with original Chambers model and optionally save to PDF"""
     
     results_all = {}
@@ -1128,14 +1130,20 @@ if __name__ == '__main__':
     user_home = 'alexi'
     user = user_ETS
 
-    sensor_data_path = f'C:/Users/{user}/OneDrive - ETS/General - Projet IV 2023 - GTO365/01-projet_IV-Mtl_Laval/03-Berlier-Bergman/05-donnees-terrains/'
-    geophy_drive_path = f'C:/Users/{user}/OneDrive - ETS/02 - Alexis Luzy/99 - Mémoire -Article/'
-    sens_data = load_TDR_data(f'C:/Users/{user}/OneDrive - ETS/02 - Alexis Luzy/Projet_IV_TDR_Data.xlsx')
+    one_drive_path = f'C:/Users/{user}/OneDrive - ETS/02 - Alexis Luzy/'
+
+    pdf_save_path = one_drive_path + f'99 - Mémoire -Article/' + "BB_test.pdf"
+    sens_data = load_TDR_data(one_drive_path + 'Projet_IV_TDR_Data.xlsx')
+
+    # to process CG data
+    #data_to_analyze = ['CG - 301', 'CG - 302']
+    # to process WM data
+    #data_to_analyze = ['WM - 301', 'WM - 302']
 
     # Run original Chambers model analysis with PDF export
     modeled_original = analyze_all_boreholes(
         sens_data, 
-        save_pdf=True, 
-        improved=True,
-        pdf_filename=geophy_drive_path + "aaaaa.pdf"
+        #data_to_analyze=data_to_analyze,
+        improved=False,
+        pdf_filename=pdf_save_path 
     )
