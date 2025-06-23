@@ -597,15 +597,8 @@ def fit_chambers_heat_model_improved(sens_data, borehole='301', debug=True, capt
         T_surf_mean_est = obs_mean_60  # Start with 60cm mean
         delta_T_surf_est = obs_range_60 * 2  # Assume surface has larger amplitude
         
-        # Estimate damping depth from amplitude reduction
-        if obs_range_60 > 0:
-            damping_ratio = obs_range_120 / obs_range_60 if obs_range_120 > 0 else 0.5
-            if damping_ratio > 0:
-                d_est = (1.2 - 0.6) / np.log(1/damping_ratio) if damping_ratio < 1 else 1.0
-            else:
-                d_est = 1.0
-        else:
-            d_est = 1.0
+        # Estimate damping depth
+        d_est = 1.0
         
         # Phase shift estimation (start with spring = 0)
         phase_shift_est = 0
@@ -941,7 +934,7 @@ def model_equation_txt_improved():
 
     Mathematical Model:
     ┌─────────────────────────────────────────────────────────┐
-    │  T(z,t) = T̄ + ΔT · exp(-z/d) · sin(ωt + φ - z/d)      │
+    │  T(z,t) = T̄ + ΔT · exp(-z/d) · sin(ωt + φ - z/4*d)      │
     └─────────────────────────────────────────────────────────┘
 
     Parameter Definitions:
@@ -956,7 +949,7 @@ def model_equation_txt_improved():
     │    ω             │  Angular frequency = 2π/365.25         │
     │    t             │  Time (days since start of year)       │
     │    φ             │  Phase shift (radians) [FITTED]        │
-    │    exp(-z/d)     │  Exponential damping with depth        │
+    │    exp(-4*z/d)     │  Exponential damping with depth        │
     │    -z/d          │  Phase lag due to depth                │
     └──────────────────┴─────────────────────────────────────────┘
 
@@ -964,7 +957,7 @@ def model_equation_txt_improved():
     • Mean Temperature:      T̄ (from sensor data), then fitted
     • Amplitude:             ΔT (from sensor data), then fitted
     • Damping Factor:        exp(-z/d)
-    • Seasonal Cycle:        sin(ωt + φ - z/d)
+    • Seasonal Cycle:        sin(ωt + φ - z/4*d)
     • Fitted Parameters:     d (damping depth), φ (phase shift)
     \n.\n.\n
 
@@ -1072,7 +1065,7 @@ if __name__ == '__main__':
 
     user_ETS = 'AQ96560'
     user_home = 'alexi'
-    user = user_ETS
+    user = user_home
 
     sensor_data_path = f'C:/Users/{user}/OneDrive - ETS/General - Projet IV 2023 - GTO365/01-projet_IV-Mtl_Laval/03-Berlier-Bergman/05-donnees-terrains/'
     geophy_drive_path = f'C:/Users/{user}/OneDrive - ETS/02 - Alexis Luzy/99 - Mémoire -Article/'
@@ -1083,5 +1076,5 @@ if __name__ == '__main__':
         sens_data, 
         save_pdf=True, 
         improved=True,
-        pdf_filename=geophy_drive_path + "chambers_improved_model.pdf"
+        pdf_filename=geophy_drive_path + "chambers_improved_model_V2.pdf"
     )
