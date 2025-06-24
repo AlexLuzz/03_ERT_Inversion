@@ -297,6 +297,58 @@ def createDebugFrontPage(debug_text, title="Chambers Model Analysis Report", fig
     
     return figures
 
+def model_equation_txt(improved=False):
+    txt = f"""
+    {"="*70}
+    CHAMBERS MODEL EQUATION & PARAMETERS
+    {"="*70}
+
+    Mathematical Model:
+    ┌─────────────────────────────────────────────────────────┐
+    │  T(z,t) = T̄ + ΔT · exp(-z/d) · sin(ωt + φ - z/4*d)      │
+    └─────────────────────────────────────────────────────────┘
+
+    Parameter Definitions:
+    ┌──────────────────┬─────────────────────────────────────────┐
+    │    Symbol        │              Description                │
+    ├──────────────────┼─────────────────────────────────────────┤
+    │    T(z,t)        │  Temperature at depth z and time t      │
+    │    T̄            │  Mean annual air temperature           │
+    │    ΔT            │  Annual air temperature amplitude       │
+    │    z             │  Depth below surface (m)                │
+    │    d             │  Damping depth (m)                      │
+    │    ω             │  Angular frequency = 2π/365.25          │
+    │    t             │  Time (days since start of year)        │
+    │    φ             │  Phase shift (radians)                  │
+    │    exp(-z/d)     │  Exponential damping with depth         │ 
+    │    -z/4*d        │  Phase lag due to depth                 │
+    └──────────────────┴─────────────────────────────────────────┘
+    """
+    if improved:
+        txt += f"""
+        Model Components:
+        • Mean Temperature:      T̄
+        • Amplitude:             ΔT 
+        • Damping Factor:        exp(-z/d)
+        • Seasonal Cycle:        sin(ωt + φ - z/d)
+        • Fitted Parameters:     T̄, ΔT, d, φ
+    """
+    else:
+        txt += f"""
+        Model Components:
+        • Mean Temperature:     T̄ (from weather data)
+        • Amplitude:             ΔT (from weather data)
+        • Damping Factor:        exp(-z/d)
+        • Seasonal Cycle:        sin(ωt + φ - z/4*d)
+        • Fitted Parameters:     d (damping depth), φ (phase shift)
+    """
+    txt += f"""
+    \n.\n.\n
+
+    {"="*70}
+    """
+    return txt
+
 def saveFiguresToPDF(figures, debug_text, pdf_filename, title="Chambers Model Analysis Report", 
                      figsize=(12, 7), verbose=False, dpi=300, metadata=None):
     """Save figures to PDF with debug front pages that can span multiple pages.
@@ -713,7 +765,7 @@ def fit_chambers_model(sens_data, borehole='301', model_type='original', hour_st
                 'n_observations': len(sensor_combined),
                 'temporal_resolution': f'{hour_step}H'
             },
-            'model_function': chambers_model,
+            #'model_function': chambers_model,
             'fitted_params': popt
         }
         
@@ -938,59 +990,7 @@ def plot_results(results, weather_data, borehole='301', save_figure=False, show_
     
     return fig
 
-def model_equation_txt(improved=False):
-    txt = f"""
-    {"="*70}
-    CHAMBERS MODEL EQUATION & PARAMETERS
-    {"="*70}
-
-    Mathematical Model:
-    ┌─────────────────────────────────────────────────────────┐
-    │  T(z,t) = T̄ + ΔT · exp(-z/d) · sin(ωt + φ - z/4*d)      │
-    └─────────────────────────────────────────────────────────┘
-
-    Parameter Definitions:
-    ┌──────────────────┬─────────────────────────────────────────┐
-    │    Symbol        │              Description                │
-    ├──────────────────┼─────────────────────────────────────────┤
-    │    T(z,t)        │  Temperature at depth z and time t      │
-    │    T̄            │  Mean annual air temperature           │
-    │    ΔT            │  Annual air temperature amplitude       │
-    │    z             │  Depth below surface (m)                │
-    │    d             │  Damping depth (m)                      │
-    │    ω             │  Angular frequency = 2π/365.25          │
-    │    t             │  Time (days since start of year)        │
-    │    φ             │  Phase shift (radians)                  │
-    │    exp(-z/d)     │  Exponential damping with depth         │ 
-    │    -z/4*d        │  Phase lag due to depth                 │
-    └──────────────────┴─────────────────────────────────────────┘
-    """
-    if improved:
-        txt += f"""
-        Model Components:
-        • Mean Temperature:      T̄
-        • Amplitude:             ΔT 
-        • Damping Factor:        exp(-z/d)
-        • Seasonal Cycle:        sin(ωt + φ - z/d)
-        • Fitted Parameters:     T̄, ΔT, d, φ
-    """
-    else:
-        txt += f"""
-        Model Components:
-        • Mean Temperature:     T̄ (from weather data)
-        • Amplitude:             ΔT (from weather data)
-        • Damping Factor:        exp(-z/d)
-        • Seasonal Cycle:        sin(ωt + φ - z/4*d)
-        • Fitted Parameters:     d (damping depth), φ (phase shift)
-    """
-    txt += f"""
-    \n.\n.\n
-
-    {"="*70}
-    """
-    return txt
-
-def analyze_all_boreholes(sens_data, data_to_analyze = ['BB - 301', 'BB - 302', 'BB - 303'], improved=False, save_pdf=True, pdf_filename=None):
+def analyze_all_boreholes(sens_data, data_to_analyze = ['BB - 301', 'BB - 302', 'BB - 303'], hour_step=24, improved=False, save_pdf=True, pdf_filename=None):
     """Analyze all three boreholes with original Chambers model and optionally save to PDF"""
     
     results_all = {}
@@ -1009,6 +1009,7 @@ def analyze_all_boreholes(sens_data, data_to_analyze = ['BB - 301', 'BB - 302', 
                 results, temp_df = fit_chambers_model_improved(
                     sens_data, 
                     borehole=borehole, 
+                    hour_step=hour_step,
                     debug=True, 
                     capture_debug=save_pdf
                 )
@@ -1016,6 +1017,7 @@ def analyze_all_boreholes(sens_data, data_to_analyze = ['BB - 301', 'BB - 302', 
                 results, temp_df = fit_chambers_model_original(
                     sens_data, 
                     borehole=borehole, 
+                    hour_step=hour_step,
                     debug=True, 
                     capture_debug=save_pdf
                 )
@@ -1078,6 +1080,13 @@ def analyze_all_boreholes(sens_data, data_to_analyze = ['BB - 301', 'BB - 302', 
     
     return results_all
 
+def save_model_results(results, output_path):
+    import pickle
+    pickle_path = f"{output_path}_model.pkl"
+    with open(pickle_path, 'wb') as f:
+        pickle.dump(results, f)
+    print(f"Saved model results: {pickle_path}")
+
 if __name__ == '__main__':
 
     user_ETS = 'AQ96560'
@@ -1088,7 +1097,7 @@ if __name__ == '__main__':
 
     sens_data = load_TDR_data(one_drive_path + 'Projet_IV_TDR_Data.xlsx', maj=False)
 
-    pdf_save_path = one_drive_path + f'99 - Mémoire -Article/' + "BB_test_fusionxxxx.pdf"
+    pdf_save_path = one_drive_path + f'99 - Mémoire -Article/' + "BB_improved_model.pdf"
 
     # to process CG data
     #data_to_analyze = ['CG - 301', 'CG - 302']
@@ -1096,9 +1105,12 @@ if __name__ == '__main__':
     #data_to_analyze = ['WM - 301', 'WM - 302']
 
     # Run original Chambers model analysis with PDF export
-    modeled_original = analyze_all_boreholes(
+    results = analyze_all_boreholes(
         sens_data, 
+        #hour_step=6,
         #data_to_analyze=data_to_analyze,
-        improved=False,
+        improved=True,
         pdf_filename=pdf_save_path 
     )
+
+    save_model_results(results, one_drive_path + f'99 - Mémoire -Article/')
