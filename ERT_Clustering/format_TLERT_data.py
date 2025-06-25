@@ -3,10 +3,10 @@ import pygimli.physics.ert as ert
 import pandas as pd
 from matplotlib.patches import Polygon
 
-folder = "C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/ERT_Data/Clustering/"
+folder = "C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/ERT_Data/Results/"
 
-results = folder + "test" 
-data = folder + "data.shm"
+results = folder + "HRE" 
+data = folder + "HRE.shm"
 
 clustering_folder = "C:/Users/AQ96560/OneDrive - ETS/02 - Alexis Luzy/ERT_Data/Clustering/"
 
